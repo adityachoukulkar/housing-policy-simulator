@@ -197,6 +197,9 @@ def main() -> None:
     price_plot = out.dropna(subset=["year", "price_delta_pct"])
     rent_plot = out.dropna(subset=["year", "rent_delta_pct"])
 
+    st.caption(f"Plot rows: price={len(price_plot)} rent={len(rent_plot)}")
+    st.caption(f"Dtypes: year={out['year'].dtype}, price_delta_pct={out['price_delta_pct'].dtype}, rent_delta_pct={out['rent_delta_pct'].dtype}")
+
     fig_price = px.line(price_plot, x="year", y="price_delta_pct", title="Price % Delta vs Baseline")
     fig_price.update_layout(
         xaxis_title="Year",
