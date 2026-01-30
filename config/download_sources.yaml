@@ -1,0 +1,31 @@
+# Download sources for raw data
+
+outputs:
+  zillow_zhvi: data/raw/zillow/zhvi_state.csv
+  zillow_zori: data/raw/zillow/zori_state.csv
+  hcd_apr_table_a2: data/raw/hcd_apr/apr_raw.csv
+  dof_e5_xlsx: data/raw/dof_e5/e5_state.xlsx
+  dof_e8_xlsx: data/raw/dof_e5/e8_state.xlsx
+  acs_state: data/raw/acs/acs_state.csv
+
+urls:
+  # Zillow (statewide). If these change, update here.
+  zillow_zhvi: https://files.zillowstatic.com/research/public_csvs/zhvi/State_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv
+  zillow_zori: https://files.zillowstatic.com/research/public_csvs/zori/County_zori_uc_sfrcondomfr_sm_month.csv
+
+  # HCD APR Table A2 (permits/completions) from data.ca.gov
+  hcd_apr_table_a2: https://data.ca.gov/dataset/81b0841f-2802-403e-b48e-2ef4b751f77c/resource/fe505d9b-8c36-42ba-ba30-08bc4f34e022/download/tablea2.csv
+  hcd_apr_resource_id: fe505d9b-8c36-42ba-ba30-08bc4f34e022
+
+  # DOF E-5 (2020-2025) and E-8 (2010-2020) Excel downloads
+  dof_e5_xlsx: https://dof.ca.gov/media/docs/forecasting/Demographics/estimates/e-5-population-and-housing-estimates-for-cities-counties-and-the-state-2020-2025/E-5_2025_InternetVersion.xlsx
+  dof_e8_xlsx: https://dof.ca.gov/media/docs/forecasting/Demographics/estimates/estimates-e8-2010-2020/E-8_2010_2020_by_Geo_Internet.xlsx
+
+acs:
+  # ACS 1-year, statewide
+  start_year: 2018
+  end_year: 2024
+  state_fips: "06"
+  api_key_env: CENSUS_API_KEY
+  dataset: acs1
+  fallback_dataset: acs5

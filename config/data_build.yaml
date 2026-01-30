@@ -1,0 +1,60 @@
+# Data build configuration
+
+# Raw inputs (paths are relative to repo root)
+inputs:
+  zillow_zhvi: data/raw/zillow/zhvi_state.csv
+  zillow_zori: data/raw/zillow/zori_state.csv
+  hcd_apr: data/raw/hcd_apr/apr_raw.csv
+  dof_e5: data/raw/dof_e5/e5_state.csv
+  acs_state: data/raw/acs/acs_state.csv
+
+# Zillow parsing
+zillow:
+  # Row filter: match RegionName to one of these values
+  region_names:
+    - California
+    - CA
+  # Columns to check for region_names matches
+  match_columns:
+    - RegionName
+    - StateName
+    - State
+  # If true, take the first matching row
+  first_match_only: false
+
+# HCD APR column mappings
+hcd_apr:
+  year: YEAR
+  # Sum across completion columns in the APR microdata
+  completions_cols:
+    - CO_VLOW_INCOME_DR
+    - CO_VLOW_INCOME_NDR
+    - CO_LOW_INCOME_DR
+    - CO_LOW_INCOME_NDR
+    - CO_MOD_INCOME_DR
+    - CO_MOD_INCOME_NDR
+    - CO_ABOVE_MOD_INCOME
+
+# DOF E-5 column mappings
+# (Adjust to actual column names in the downloaded table)
+dof_e5:
+  year: year
+  population: population
+  housing_units: housing_units
+
+# ACS column mappings
+acs:
+  year: year
+  vacancy_rate: vacancy_rate
+  renter_share: renter_share
+
+# Output
+output:
+  path: data/processed/ca_state_annual.csv
+  # Join type: inner (intersection) or outer (union)
+  join: inner
+
+# Annualization rule for Zillow
+annualize:
+  # require at least this many months per year
+  min_months: 9

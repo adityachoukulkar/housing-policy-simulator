@@ -1,0 +1,49 @@
+data_path: data/processed/ca_state_annual.csv
+start_year: null
+end_year: null
+policy_grid:
+  tax_delta:
+    min: 0.0
+    max: 0.01
+    step: 0.002
+  completions_uplift_pct:
+    min: 0.0
+    max: 0.3
+    step: 0.05
+coeffs:
+  a0: -0.04567685305548587
+  a1: -10.890849217163158
+  a2: -4.556856598384939
+  a3: 0.5
+  a4: 3.8114314984705575
+  b0: -0.23546828449857723
+  b1: 26.74994008921977
+  b2: -0.48560641179071395
+  b3: 2.9783146705614674
+sensitivity:
+  pass_through_rate: 1.0
+  supply_elasticity: 1.0
+
+# Endogenous rental tax pass-through
+pass_through:
+  # Base pass-through rate before market tightness/elasticity effects
+  base: 0.5
+  # Target vacancy used for tightness adjustment
+  vacancy_target: 0.05
+  # Increase in pass-through when vacancy is below target
+  vacancy_slope: 2.0
+  # Reduction in pass-through with higher demand elasticity
+  elasticity_slope: 0.1
+  # Demand elasticity (higher => less pass-through)
+  demand_elasticity: 0.7
+columns:
+  year: year
+  price: zhvi
+  rent: zori
+  housing_units: housing_units
+  completions: completions
+  population: population
+  vacancy_rate: vacancy_rate
+output:
+  scenarios: data/processed/scenario_trajectories.csv
+  summary: data/processed/scenario_summary.csv
