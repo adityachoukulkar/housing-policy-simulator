@@ -190,7 +190,14 @@ def main() -> None:
     out["rent_delta_pct"] = (out["rent"] / out["rent_base"] - 1.0) * 100
 
     st.subheader("Scenario deltas vs baseline")
-    fig_price = px.line(out, x="year", y="price_delta_pct", title="Price % Delta vs Baseline")
+    out["year"] = pd.to_numeric(out["year"], errors="coerce")
+    out["price_delta_pct"] = pd.to_numeric(out["price_delta_pct"], errors="coerce")
+    out["rent_delta_pct"] = pd.to_numeric(out["rent_delta_pct"], errors="coerce")
+
+    price_plot = out.dropna(subset=["year", "price_delta_pct"])
+    rent_plot = out.dropna(subset=["year", "rent_delta_pct"])
+
+    fig_price = px.line(price_plot, x="year", y="price_delta_pct", title="Price % Delta vs Baseline")
     fig_price.update_layout(
         xaxis_title="Year",
         yaxis_title="Price delta (%)",
@@ -200,7 +207,7 @@ def main() -> None:
     fig_price.update_traces(hovertemplate="year=%{x}<br>price_delta=%{y:.2f}%")
     st.plotly_chart(fig_price, use_container_width=True)
 
-    fig_rent = px.line(out, x="year", y="rent_delta_pct", title="Rent % Delta vs Baseline")
+    fig_rent = px.line(rent_plot, x="year", y="rent_delta_pct", title="Rent % Delta vs Baseline")
     fig_rent.update_layout(
         xaxis_title="Year",
         yaxis_title="Rent delta (%)",
