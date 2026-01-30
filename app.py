@@ -7,8 +7,8 @@ import math
 from pathlib import Path
 from typing import Dict, Any, List
 
+import altair as alt
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 import yaml
 
@@ -197,28 +197,26 @@ def main() -> None:
     price_plot = out.dropna(subset=["year", "price_delta_pct"])
     rent_plot = out.dropna(subset=["year", "rent_delta_pct"])
 
-    st.caption(f"Plot rows: price={len(price_plot)} rent={len(rent_plot)}")
-    st.caption(f"Dtypes: year={out['year'].dtype}, price_delta_pct={out['price_delta_pct'].dtype}, rent_delta_pct={out['rent_delta_pct'].dtype}")
-
-    fig_price = px.line(price_plot, x="year", y="price_delta_pct", title="Price % Delta vs Baseline")
-    fig_price.update_layout(
-        xaxis_title="Year",
-        yaxis_title="Price delta (%)",
-        yaxis_tickformat=".2f",
+    price_chart = (
+        alt.Chart(price_plot, title="Price % Delta vs Baseline")
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("year:Q", title="Year", axis=alt.Axis(format="d")),
+            y=alt.Y("price_delta_pct:Q", title="Price delta (%)", axis=alt.Axis(format=".2f")),
+        )
+        .properties(height=250)
     )
-    fig_price.update_xaxes(tickformat="d")
-    fig_price.update_traces(hovertemplate="year=%{x}<br>price_delta=%{y:.2f}%")
-    st.plotly_chart(fig_price, use_container_width=True)
-
-    fig_rent = px.line(rent_plot, x="year", y="rent_delta_pct", title="Rent % Delta vs Baseline")
-    fig_rent.update_layout(
-        xaxis_title="Year",
-        yaxis_title="Rent delta (%)",
-        yaxis_tickformat=".2f",
+    rent_chart = (
+        alt.Chart(rent_plot, title="Rent % Delta vs Baseline")
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("year:Q", title="Year", axis=alt.Axis(format="d")),
+            y=alt.Y("rent_delta_pct:Q", title="Rent delta (%)", axis=alt.Axis(format=".2f")),
+        )
+        .properties(height=250)
     )
-    fig_rent.update_xaxes(tickformat="d")
-    fig_rent.update_traces(hovertemplate="year=%{x}<br>rent_delta=%{y:.2f}%")
-    st.plotly_chart(fig_rent, use_container_width=True)
+    st.altair_chart(price_chart, use_container_width=True)
+    st.altair_chart(rent_chart, use_container_width=True)
 
     st.subheader("Outputs (last year)")
     last = out.iloc[-1]
