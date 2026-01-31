@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Dict
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
+import yaml
 
 
 def set_base_style(doc: Document) -> None:
@@ -37,11 +39,18 @@ def add_table(doc: Document, title: str, rows: list[tuple[str, str]]) -> None:
         row_cells[1].text = value
 
 
+def load_config(path: Path) -> Dict[str, Any]:
+    with path.open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
 def main() -> int:
     doc = Document()
     set_base_style(doc)
 
-    doc.add_heading("Structural Upgrade: Endogenous Rental Tax Pass-Through", level=1)
+    cfg = load_config(Path("config/sim_params.yaml"))
+
+    doc.add_heading("Structural Model Summary", level=1)
 
     doc.add_heading("Goal", level=2)
     doc.add_paragraph(
@@ -109,15 +118,59 @@ def main() -> int:
     for item in items:
         doc.add_paragraph(item, style="List Bullet")
 
+    pass_through = cfg.get("pass_through", {})
     add_table(
         doc,
-        "Parameter Defaults (Current Config)",
+        "Parameter Defaults: Pass-Through",
         [
-            ("pass_through.base", "0.5 (baseline pass-through)"),
-            ("pass_through.vacancy_target", "0.05 (target vacancy)"),
-            ("pass_through.vacancy_slope", "2.0 (tightness effect)"),
-            ("pass_through.elasticity_slope", "0.1 (elasticity effect)"),
-            ("pass_through.demand_elasticity", "0.7 (demand elasticity)"),
+            ("pass_through.base", str(pass_through.get("base", ""))),
+            ("pass_through.vacancy_target", str(pass_through.get("vacancy_target", ""))),
+            ("pass_through.vacancy_slope", str(pass_through.get("vacancy_slope", ""))),
+            ("pass_through.elasticity_slope", str(pass_through.get("elasticity_slope", ""))),
+            ("pass_through.demand_elasticity", str(pass_through.get("demand_elasticity", ""))),
+        ],
+    )
+
+    doc.add_heading("Price Model: User-Cost with Momentum", level=2)
+    doc.add_paragraph(
+        "Prices are anchored to user cost and can include rent-driven momentum and drift."
+    )
+    add_equation(
+        doc,
+        "P_t = (R_t / UC_t) + λ · (ΔR_t / UC_t) ;  UC_t = r + τ + m + δ − g_R",
+    )
+    add_equation(
+        doc,
+        "P_t = P_t · exp(κ_t · g_R) · exp(drift)",
+    )
+    doc.add_paragraph("Where momentum decays over time:")
+    add_equation(doc, "κ_t = κ_0 · exp(−decay · t)")
+
+    user_cost = cfg.get("user_cost", {})
+    add_table(
+        doc,
+        "Parameter Defaults: User-Cost",
+        [
+            ("user_cost.real_rate", str(user_cost.get("real_rate", ""))),
+            ("user_cost.property_tax_base", str(user_cost.get("property_tax_base", ""))),
+            ("user_cost.maintenance", str(user_cost.get("maintenance", ""))),
+            ("user_cost.depreciation", str(user_cost.get("depreciation", ""))),
+            ("user_cost.expected_rent_growth", str(user_cost.get("expected_rent_growth", ""))),
+            ("user_cost.momentum_kappa", str(user_cost.get("momentum_kappa", ""))),
+            ("user_cost.momentum_decay", str(user_cost.get("momentum_decay", ""))),
+            ("user_cost.price_drift", str(user_cost.get("price_drift", ""))),
+            ("user_cost.rent_capitalization_lambda", str(user_cost.get("rent_capitalization_lambda", ""))),
+        ],
+    )
+
+    supply_response = cfg.get("supply_response", {})
+    add_table(
+        doc,
+        "Parameter Defaults: Supply Response",
+        [
+            ("supply_response.price_elasticity", str(supply_response.get("price_elasticity", ""))),
+            ("supply_response.min_multiplier", str(supply_response.get("min_multiplier", ""))),
+            ("supply_response.max_multiplier", str(supply_response.get("max_multiplier", ""))),
         ],
     )
 

@@ -34,7 +34,14 @@ def compute_other_change(df: pd.DataFrame) -> List[float]:
     return other
 
 
-def simulate(df: pd.DataFrame, coeffs: Dict[str, float], policy: Dict[str, float], pass_through: Dict[str, float]) -> pd.DataFrame:
+def simulate(
+    df: pd.DataFrame,
+    coeffs: Dict[str, float],
+    policy: Dict[str, float],
+    pass_through: Dict[str, float],
+    supply_response: Dict[str, float],
+    rent_response: Dict[str, float],
+) -> pd.DataFrame:
     df = df.sort_values("year").reset_index(drop=True)
     other_change = compute_other_change(df)
 
@@ -50,6 +57,21 @@ def simulate(df: pd.DataFrame, coeffs: Dict[str, float], policy: Dict[str, float
 
     tax_delta = policy["tax_delta"]
     completions_uplift_pct = policy["completions_uplift_pct"]
+    price_model = policy.get("price_model", "growth")
+    user_cost = policy.get("user_cost", {})
+    uc_real = user_cost.get("real_rate", 0.03)
+    uc_tax_base = user_cost.get("property_tax_base", 0.01)
+    uc_maint = user_cost.get("maintenance", 0.01)
+    uc_dep = user_cost.get("depreciation", 0.01)
+    uc_g_r = user_cost.get("expected_rent_growth", 0.02)
+    uc_lambda = user_cost.get("rent_capitalization_lambda", 0.0)
+    uc_drift = user_cost.get("price_drift", 0.0)
+    uc_decay = user_cost.get("momentum_decay", 0.0)
+    rr_user_cost = rent_response.get("user_cost_to_rent", 0.0)
+    rr_cost_push = rent_response.get("cost_push_to_rent", 0.0)
+    sr_elasticity = supply_response.get("price_elasticity", 0.5)
+    sr_min = supply_response.get("min_multiplier", 0.8)
+    sr_max = supply_response.get("max_multiplier", 1.3)
 
     rows = []
     rows.append(
@@ -61,10 +83,16 @@ def simulate(df: pd.DataFrame, coeffs: Dict[str, float], policy: Dict[str, float
         }
     )
 
+    prev_g_price = 0.0
     for i in range(1, len(df)):
         prev = rows[-1]
 
-        completions_adj = df.loc[i, "completions"] * (1.0 + completions_uplift_pct)
+        supply_mult = 1.0 + sr_elasticity * prev_g_price
+        if supply_mult < sr_min:
+            supply_mult = sr_min
+        if supply_mult > sr_max:
+            supply_mult = sr_max
+        completions_adj = df.loc[i, "completions"] * (1.0 + completions_uplift_pct) * supply_mult
         h_t = prev["housing_units"] + completions_adj + other_change[i]
 
         g_h = math.log(h_t / prev["housing_units"])
@@ -80,11 +108,43 @@ def simulate(df: pd.DataFrame, coeffs: Dict[str, float], policy: Dict[str, float
         pt = pt_base + vac_slope * (vac_target - vac_lag) - elas_slope * demand_elas
         pt = max(0.0, min(1.0, pt))
 
-        g_rent = a0 + a1 * g_h + a2 * g_pop + a3 * (pt * tax_delta) + a4 * vac_lag
-        g_price = b0 + b1 * g_h + b2 * g_pop + b3 * g_rent
-
+        g_rent_tax = a3 * (pt * tax_delta)
+        uc_base = uc_real + uc_tax_base + uc_maint + uc_dep - uc_g_r
+        uc_policy = uc_real + (uc_tax_base + tax_delta) + uc_maint + uc_dep - uc_g_r
+        uc_delta = uc_policy - uc_base
+        cost_push = (uc_tax_base + tax_delta + uc_maint) - (uc_tax_base + uc_maint)
+        g_rent = (
+            a0
+            + a1 * g_h
+            + a2 * g_pop
+            + g_rent_tax
+            + a4 * vac_lag
+            + rr_user_cost * uc_delta
+            + rr_cost_push * cost_push
+        )
         rent_t = prev["rent"] * math.exp(g_rent)
-        price_t = prev["price"] * math.exp(g_price)
+        rent_no_tax = prev["rent"] * math.exp(g_rent - g_rent_tax)
+        delta_rent_tax = rent_t - rent_no_tax
+
+        uc = None
+        if price_model in ("user_cost", "user_cost_momentum"):
+            uc_tax = uc_tax_base + tax_delta
+            uc = uc_real + uc_tax + uc_maint + uc_dep - uc_g_r
+            if uc <= 0:
+                uc = 1e-6
+            price_t = rent_t / uc
+            if uc_lambda and delta_rent_tax:
+                price_t = price_t + uc_lambda * (delta_rent_tax / uc)
+            if price_model == "user_cost_momentum":
+                kappa0 = user_cost.get("momentum_kappa", 0.0)
+                kappa_t = kappa0 * math.exp(-uc_decay * (i - 1))
+                price_t = price_t * math.exp(kappa_t * g_rent)
+            if uc_drift:
+                price_t = price_t * math.exp(uc_drift)
+        else:
+            g_price = b0 + b1 * g_h + b2 * g_pop + b3 * g_rent
+            price_t = prev["price"] * math.exp(g_price)
+        prev_g_price = math.log(price_t / prev["price"])
 
         rows.append(
             {
@@ -93,6 +153,8 @@ def simulate(df: pd.DataFrame, coeffs: Dict[str, float], policy: Dict[str, float
                 "rent": rent_t,
                 "housing_units": h_t,
                 "pass_through": pt,
+                "user_cost": uc,
+                "pr_ratio": price_t / rent_t if rent_t else None,
             }
         )
 
@@ -108,8 +170,47 @@ def main() -> None:
 
     # Sidebar controls
     st.sidebar.header("Policy levers")
-    tax_delta = st.sidebar.slider("Tax delta (rental) %", 0.0, 1.0, cfg["policy_grid"]["tax_delta"]["min"] * 100, 0.01) / 100.0
-    completions_uplift = st.sidebar.slider("% increase in housing built", 0.0, 50.0, cfg["policy_grid"]["completions_uplift_pct"]["min"] * 100, 1.0) / 100.0
+    tax_delta = st.sidebar.slider(
+        "Incremental property tax (rentals) (%)",
+        0.0,
+        3.0,
+        cfg["policy_grid"]["tax_delta"]["min"] * 100,
+        0.01,
+    ) / 100.0
+    completions_uplift = st.sidebar.slider(
+        "% increase in housing built",
+        0.0,
+        100.0,
+        cfg["policy_grid"]["completions_uplift_pct"]["min"] * 100,
+        1.0,
+    ) / 100.0
+
+    st.sidebar.header("Price model")
+    price_model = st.sidebar.radio(
+        "Price model",
+        ["user_cost_momentum", "growth"],
+        index=0 if cfg.get("price_model", "growth") == "user_cost_momentum" else 1,
+    )
+    uc_cfg = cfg.get("user_cost", {}).copy()
+    if price_model in ("user_cost_momentum",):
+        st.sidebar.caption("User-cost parameters (annual)")
+        uc_cfg["real_rate"] = st.sidebar.slider("Real interest rate (%)", 0.0, 6.0, float(uc_cfg.get("real_rate", 0.03)) * 100, 0.25) / 100.0
+        uc_cfg["property_tax_base"] = st.sidebar.slider("Baseline property tax (%)", 0.8, 2.0, float(uc_cfg.get("property_tax_base", 0.01)) * 100, 0.05) / 100.0
+        uc_cfg["maintenance"] = st.sidebar.slider("Maintenance/insurance (%)", 0.5, 3.0, float(uc_cfg.get("maintenance", 0.01)) * 100, 0.05) / 100.0
+        uc_cfg["depreciation"] = 0.02
+        uc_cfg["expected_rent_growth"] = 0.0
+        if price_model == "user_cost_momentum":
+            uc_cfg["momentum_kappa"] = st.sidebar.slider("Rent momentum (kappa)", 0.0, 3.0, float(uc_cfg.get("momentum_kappa", 0.0)), 0.1)
+            uc_cfg["momentum_decay"] = 0.0
+            uc_cfg["price_drift"] = st.sidebar.slider("Price drift (%)", 0.0, 2.0, float(uc_cfg.get("price_drift", 0.003)) * 100, 0.05) / 100.0
+
+        uc_min = uc_cfg["real_rate"] + uc_cfg["property_tax_base"] + uc_cfg["maintenance"] + uc_cfg["depreciation"]
+        if uc_cfg["expected_rent_growth"] >= uc_min:
+            st.sidebar.error(
+                "Expected rent growth is too high relative to carrying costs. "
+                "This makes user cost ≤ 0 and breaks the price-to-rent model."
+            )
+            st.stop()
 
     coeffs = cfg["coeffs"].copy()
     if st.sidebar.checkbox("Show coefficients (advanced)", value=False):
@@ -126,9 +227,47 @@ def main() -> None:
         "Tight market",
         "Slack market",
     ]
-    preset_stack = st.sidebar.multiselect("Preset stack", preset_options, default=[])
-    apply_presets = st.sidebar.button("Apply presets")
-    reset_presets = st.sidebar.button("Reset to defaults")
+    if "active_presets" not in st.session_state:
+        st.session_state.active_presets = set()
+
+    preset_stack = list(st.session_state.active_presets)
+
+    st.sidebar.markdown(
+        """
+        <style>
+        div[data-testid="stButton"] > button {
+            width: 100%;
+            border-radius: 6px;
+            border: 1px solid #d0d0d0;
+            padding: 0.25rem 0.4rem;
+            font-size: 0.85rem;
+        }
+        .reset-button > button {
+            background: #f2f4f7;
+            color: #1f2937;
+            border: 1px solid #cbd5e1;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    cols = st.sidebar.columns(2)
+    for i, preset in enumerate(preset_options):
+        col = cols[i % 2]
+        is_active = preset in st.session_state.active_presets
+        label = f"✅ {preset}" if is_active else preset
+        if col.button(label, key=f"preset_{preset}"):
+            if is_active:
+                st.session_state.active_presets.remove(preset)
+            else:
+                st.session_state.active_presets.add(preset)
+            st.rerun()
+
+    with st.sidebar.container():
+        st.markdown('<div class="reset-button">', unsafe_allow_html=True)
+        reset_presets = st.button("Reset to defaults")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     st.sidebar.header("Sensitivity")
     pass_through_rate = st.sidebar.slider(
@@ -154,7 +293,7 @@ def main() -> None:
     pt_cfg = cfg.get("pass_through", {}).copy()
     if reset_presets:
         pt_cfg = cfg.get("pass_through", {}).copy()
-    if apply_presets and preset_stack:
+    if preset_stack:
         for preset in preset_stack:
             if preset == "High demand elasticity":
                 pt_cfg["demand_elasticity"] = 1.2
@@ -180,10 +319,24 @@ def main() -> None:
     policy = {
         "tax_delta": tax_delta,
         "completions_uplift_pct": completions_uplift,
+        "price_model": price_model,
+        "user_cost": uc_cfg,
     }
 
-    baseline = simulate(df, coeffs, {"tax_delta": 0.0, "completions_uplift_pct": 0.0}, pt_cfg)
-    scenario = simulate(df, coeffs, policy, pt_cfg)
+    baseline = simulate(
+        df,
+        coeffs,
+        {
+            "tax_delta": 0.0,
+            "completions_uplift_pct": 0.0,
+            "price_model": price_model,
+            "user_cost": uc_cfg,
+        },
+        pt_cfg,
+        cfg.get("supply_response", {}),
+        cfg.get("rent_response", {}),
+    )
+    scenario = simulate(df, coeffs, policy, pt_cfg, cfg.get("supply_response", {}), cfg.get("rent_response", {}))
 
     out = scenario.merge(baseline, on="year", suffixes=("", "_base"))
     out["price_delta_pct"] = (out["price"] / out["price_base"] - 1.0) * 100
@@ -224,9 +377,35 @@ def main() -> None:
     col1.metric("Price delta (%)", f"{last['price_delta_pct']:.2f}")
     col2.metric("Rent delta (%)", f"{last['rent_delta_pct']:.2f}")
     col3.metric("Pass-through (last year)", f"{last['pass_through']:.2f}")
+    if "user_cost" in last and pd.notna(last["user_cost"]):
+        st.caption(f"User cost (last year): {last['user_cost']:.3f}")
+    if "pr_ratio" in last and pd.notna(last["pr_ratio"]):
+        st.caption(f"Price-to-rent (last year): {last['pr_ratio']:.2f}")
+
+    st.subheader("Pass-through by year")
+    st.line_chart(out.set_index("year")[["pass_through"]], height=220)
+
+    st.subheader("Levels (price and rent)")
+    level_df = out[["year", "price", "rent"]].set_index("year")
+    st.line_chart(level_df, height=240)
+
+    st.subheader("Explainer: pass-through mechanics")
+    st.info(
+        """
+The pass-through rate φ_t is higher when markets are tight (low vacancy) and lower
+when demand is more elastic. In this model:
+
+- Tight market (vacancy below target) → higher φ_t
+- Slack market (vacancy above target) → lower φ_t
+- High demand elasticity → lower φ_t
+- Low demand elasticity → higher φ_t
+
+This means tax increases have a larger rent impact in tight, inelastic markets.
+"""
+    )
 
     st.subheader("Underlying series")
-    st.dataframe(out[["year", "price", "rent", "price_delta_pct", "rent_delta_pct", "pass_through"]])
+    st.dataframe(out[["year", "price", "rent", "price_delta_pct", "rent_delta_pct", "pass_through", "user_cost", "pr_ratio"]])
 
 
 if __name__ == "__main__":

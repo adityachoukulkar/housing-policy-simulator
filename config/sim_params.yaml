@@ -4,11 +4,11 @@ end_year: null
 policy_grid:
   tax_delta:
     min: 0.0
-    max: 0.01
+    max: 0.03
     step: 0.002
   completions_uplift_pct:
     min: 0.0
-    max: 0.3
+    max: 1.0
     step: 0.05
 coeffs:
   a0: -0.04567685305548587
@@ -47,3 +47,42 @@ columns:
 output:
   scenarios: data/processed/scenario_trajectories.csv
   summary: data/processed/scenario_summary.csv
+
+# Price model options: "growth", "user_cost_momentum"
+price_model: user_cost_momentum
+
+# User-cost parameters for price-to-rent model
+user_cost:
+  # Real interest rate (e.g., 0.03 = 3%)
+  real_rate: 0.03
+  # Baseline property tax rate (e.g., 0.01 = 1%)
+  property_tax_base: 0.01
+  # Maintenance/insurance (annual share of price)
+  maintenance: 0.01
+  # Depreciation (annual)
+  depreciation: 0.01
+  # Expected rent growth (annual, used as g_R)
+  expected_rent_growth: 0.02
+  # Momentum factor on rent growth (investor chase yield)
+  momentum_kappa: 0.0
+  # Additive capitalization of tax-driven rent change into price
+  rent_capitalization_lambda: 1.0
+  # Persistent drift in price (annual)
+  price_drift: 0.003
+  # Decay rate for momentum effect (higher => faster fade)
+  momentum_decay: 0.0
+
+# User-cost effects on rent (no new sliders; fixed defaults)
+rent_response:
+  # Demand shift from higher user cost (owner-occupier fallback)
+  user_cost_to_rent: 0.2
+  # Cost-push pass-through from carrying costs (maintenance + taxes)
+  cost_push_to_rent: 0.1
+
+# Supply response parameters (applied to completions)
+supply_response:
+  # Elasticity of completions to last year's price growth
+  price_elasticity: 0.5
+  # Minimum and maximum multipliers on completions
+  min_multiplier: 0.8
+  max_multiplier: 1.3

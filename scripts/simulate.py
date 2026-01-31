@@ -27,6 +27,10 @@ class Config:
     coeffs: Dict[str, float]
     sensitivity: Dict[str, float]
     pass_through: Dict[str, float]
+    price_model: str
+    user_cost: Dict[str, float]
+    supply_response: Dict[str, float]
+    rent_response: Dict[str, float]
     columns: Dict[str, str]
     output_scenarios: Path
     output_summary: Path
@@ -45,6 +49,10 @@ def load_config(path: Path) -> Config:
         coeffs=raw["coeffs"],
         sensitivity=raw.get("sensitivity", {}),
         pass_through=raw.get("pass_through", {}),
+        price_model=raw.get("price_model", "growth"),
+        user_cost=raw.get("user_cost", {}),
+        supply_response=raw.get("supply_response", {}),
+        rent_response=raw.get("rent_response", {}),
         columns=raw["columns"],
         output_scenarios=Path(output["scenarios"]),
         output_summary=Path(output["summary"]),
@@ -131,6 +139,10 @@ def simulate(
     tax_delta: float,
     completions_uplift_pct: float,
     pass_through_cfg: Dict[str, float],
+    price_model: str,
+    user_cost_cfg: Dict[str, float],
+    supply_response_cfg: Dict[str, float],
+    rent_response_cfg: Dict[str, float],
 ) -> List[Dict[str, float]]:
     if len(rows) < 2:
         raise ValueError("Need at least 2 years of data")
@@ -147,6 +159,20 @@ def simulate(
     b2 = coeffs["b2"]
     b3 = coeffs["b3"]
 
+    uc_real = user_cost_cfg.get("real_rate", 0.03)
+    uc_tax_base = user_cost_cfg.get("property_tax_base", 0.01)
+    uc_maint = user_cost_cfg.get("maintenance", 0.01)
+    uc_dep = user_cost_cfg.get("depreciation", 0.01)
+    uc_g_r = user_cost_cfg.get("expected_rent_growth", 0.02)
+    uc_lambda = user_cost_cfg.get("rent_capitalization_lambda", 0.0)
+    uc_drift = user_cost_cfg.get("price_drift", 0.0)
+    uc_decay = user_cost_cfg.get("momentum_decay", 0.0)
+    rr_user_cost = rent_response_cfg.get("user_cost_to_rent", 0.0)
+    rr_cost_push = rent_response_cfg.get("cost_push_to_rent", 0.0)
+    sr_elasticity = supply_response_cfg.get("price_elasticity", 0.5)
+    sr_min = supply_response_cfg.get("min_multiplier", 0.8)
+    sr_max = supply_response_cfg.get("max_multiplier", 1.3)
+
     # initialize with baseline observed levels
     sim = []
     sim.append(
@@ -158,11 +184,17 @@ def simulate(
         }
     )
 
+    prev_g_price = 0.0
     for i in range(1, len(rows)):
         prev = sim[-1]
 
         # Update housing units with upzoning applied to completions
-        completions_adj = rows[i]["completions"] * (1.0 + completions_uplift_pct)
+        supply_mult = 1.0 + sr_elasticity * prev_g_price
+        if supply_mult < sr_min:
+            supply_mult = sr_min
+        if supply_mult > sr_max:
+            supply_mult = sr_max
+        completions_adj = rows[i]["completions"] * (1.0 + completions_uplift_pct) * supply_mult
         h_t = prev["housing_units"] + completions_adj + other_change[i]
 
         # Growth rates
@@ -180,11 +212,44 @@ def simulate(
         pt = pt_base + vac_slope * (vac_target - vac_lag) - elas_slope * demand_elas
         pt = max(0.0, min(1.0, pt))
 
-        g_rent = a0 + a1 * g_h + a2 * g_pop + a3 * (pt * tax_delta) + a4 * vac_lag
-        g_price = b0 + b1 * g_h + b2 * g_pop + b3 * g_rent
-
+        g_rent_tax = a3 * (pt * tax_delta)
+        # User-cost channels into rent
+        uc_base = uc_real + uc_tax_base + uc_maint + uc_dep - uc_g_r
+        uc_policy = uc_real + (uc_tax_base + tax_delta) + uc_maint + uc_dep - uc_g_r
+        uc_delta = uc_policy - uc_base
+        cost_push = (uc_tax_base + tax_delta + uc_maint) - (uc_tax_base + uc_maint)
+        g_rent = (
+            a0
+            + a1 * g_h
+            + a2 * g_pop
+            + g_rent_tax
+            + a4 * vac_lag
+            + rr_user_cost * uc_delta
+            + rr_cost_push * cost_push
+        )
         rent_t = prev["rent"] * math.exp(g_rent)
-        price_t = prev["price"] * math.exp(g_price)
+        rent_no_tax = prev["rent"] * math.exp(g_rent - g_rent_tax)
+        delta_rent_tax = rent_t - rent_no_tax
+
+        if price_model in ("user_cost_momentum",):
+            uc_tax = uc_tax_base + tax_delta
+            uc = uc_real + uc_tax + uc_maint + uc_dep - uc_g_r
+            if uc <= 0:
+                uc = 1e-6
+            price_t = rent_t / uc
+            if uc_lambda and delta_rent_tax:
+                price_t = price_t + uc_lambda * (delta_rent_tax / uc)
+            if price_model == "user_cost_momentum":
+                kappa0 = user_cost_cfg.get("momentum_kappa", 0.0)
+                kappa_t = kappa0 * math.exp(-uc_decay * (i - 1))
+                price_t = price_t * math.exp(kappa_t * g_rent)
+            if uc_drift:
+                price_t = price_t * math.exp(uc_drift)
+            g_price = math.log(price_t / prev["price"])
+        else:
+            g_price = b0 + b1 * g_h + b2 * g_pop + b3 * g_rent
+            price_t = prev["price"] * math.exp(g_price)
+        prev_g_price = g_price
 
         sim.append(
             {
@@ -235,6 +300,10 @@ def main() -> int:
         tax_delta=0.0,
         completions_uplift_pct=0.0,
         pass_through_cfg=cfg.pass_through,
+        price_model=cfg.price_model,
+        user_cost_cfg=cfg.user_cost,
+        supply_response_cfg=cfg.supply_response,
+        rent_response_cfg=cfg.rent_response,
     )
     baseline_by_year = {r["year"]: r for r in baseline}
 
@@ -251,6 +320,10 @@ def main() -> int:
                 tax_delta=tax,
                 completions_uplift_pct=uplift,
                 pass_through_cfg=cfg.pass_through,
+                price_model=cfg.price_model,
+                user_cost_cfg=cfg.user_cost,
+                supply_response_cfg=cfg.supply_response,
+                rent_response_cfg=cfg.rent_response,
             )
             for r in sim:
                 base = baseline_by_year[r["year"]]

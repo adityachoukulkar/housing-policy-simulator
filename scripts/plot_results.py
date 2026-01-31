@@ -67,7 +67,7 @@ def main() -> int:
         yaxis_tickformat=".1f",
         xaxis_title="year",
         yaxis_title="price_delta_pct (%)",
-        legend_title_text="tax_delta / % increase in housing built",
+        legend_title_text="incremental property tax (rentals) / % increase in housing built",
     )
     fig_price.update_traces(
         hovertemplate=(
@@ -90,7 +90,7 @@ def main() -> int:
         yaxis_tickformat=".1f",
         xaxis_title="year",
         yaxis_title="rent_delta_pct (%)",
-        legend_title_text="tax_delta / % increase in housing built",
+        legend_title_text="incremental property tax (rentals) / % increase in housing built",
     )
     fig_rent.update_traces(
         hovertemplate=(
@@ -132,7 +132,7 @@ def main() -> int:
 
         heat_rent = px.imshow(
             pivot_rent,
-            labels={"x": "% increase in housing built", "y": "tax delta", "color": "rent_delta_pct"},
+            labels={"x": "% increase in housing built", "y": "incremental property tax (rentals)", "color": "rent_delta_pct"},
             title="Final-Year Rent % Delta Heatmap",
             aspect="auto",
         )
@@ -142,7 +142,7 @@ def main() -> int:
         heat_rent.update_traces(hovertemplate="uplift=%{x}<br>tax=%{y}<br>rent_delta=%{z:.2f}%")
         heat_price = px.imshow(
             pivot_price,
-            labels={"x": "% increase in housing built", "y": "tax delta", "color": "price_delta_pct"},
+            labels={"x": "% increase in housing built", "y": "incremental property tax (rentals)", "color": "price_delta_pct"},
             title="Final-Year Price % Delta Heatmap",
             aspect="auto",
         )
