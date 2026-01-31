@@ -350,11 +350,12 @@ def main() -> None:
     price_plot = out.dropna(subset=["year", "price_delta_pct"])
     rent_plot = out.dropna(subset=["year", "rent_delta_pct"])
 
+    year_ticks = sorted(price_plot["year"].dropna().astype(int).unique().tolist())
     price_chart = (
         alt.Chart(price_plot, title="Price % Delta vs Baseline")
         .mark_line(point=True)
         .encode(
-            x=alt.X("year:Q", title="Year", axis=alt.Axis(format="d")),
+            x=alt.X("year:Q", title="Year", axis=alt.Axis(format="d", values=year_ticks)),
             y=alt.Y("price_delta_pct:Q", title="Price delta (%)", axis=alt.Axis(format=".2f")),
         )
         .properties(height=250)
@@ -363,7 +364,7 @@ def main() -> None:
         alt.Chart(rent_plot, title="Rent % Delta vs Baseline")
         .mark_line(point=True)
         .encode(
-            x=alt.X("year:Q", title="Year", axis=alt.Axis(format="d")),
+            x=alt.X("year:Q", title="Year", axis=alt.Axis(format="d", values=year_ticks)),
             y=alt.Y("rent_delta_pct:Q", title="Rent delta (%)", axis=alt.Axis(format=".2f")),
         )
         .properties(height=250)
