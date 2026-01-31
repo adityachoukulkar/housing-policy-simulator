@@ -408,7 +408,7 @@ This means tax increases have a larger rent impact in tight, inelastic markets.
     display_df["user_cost"] = display_df["user_cost"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "")
     display_df["pr_ratio"] = display_df["pr_ratio"].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "")
     display_df = display_df.fillna("").astype(str)
-    st.dataframe(display_df, use_container_width=True)
+    st.table(display_df)
 
 
 if __name__ == "__main__":
