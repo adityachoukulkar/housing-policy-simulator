@@ -400,14 +400,15 @@ This means tax increases have a larger rent impact in tight, inelastic markets.
     st.subheader("Underlying series")
     display_df = out[["year", "price", "rent", "price_delta_pct", "rent_delta_pct", "pass_through", "user_cost", "pr_ratio"]].copy()
     display_df["year"] = display_df["year"].astype(int).astype(str)
-    display_df["rent"] = display_df["rent"].map(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
-    display_df["price"] = display_df["price"].map(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
-    display_df["price_delta_pct"] = display_df["price_delta_pct"].map(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
-    display_df["rent_delta_pct"] = display_df["rent_delta_pct"].map(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
-    display_df["pass_through"] = display_df["pass_through"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
-    display_df["user_cost"] = display_df["user_cost"].map(lambda x: f"{x:.3f}" if pd.notna(x) else "")
-    display_df["pr_ratio"] = display_df["pr_ratio"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
-    st.dataframe(display_df)
+    display_df["rent"] = display_df["rent"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
+    display_df["price"] = display_df["price"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
+    display_df["price_delta_pct"] = display_df["price_delta_pct"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
+    display_df["rent_delta_pct"] = display_df["rent_delta_pct"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
+    display_df["pass_through"] = display_df["pass_through"].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+    display_df["user_cost"] = display_df["user_cost"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "")
+    display_df["pr_ratio"] = display_df["pr_ratio"].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+    display_df = display_df.fillna("").astype(str)
+    st.dataframe(display_df, use_container_width=True)
 
 
 if __name__ == "__main__":
