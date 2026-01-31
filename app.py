@@ -382,13 +382,6 @@ def main() -> None:
     if "pr_ratio" in last and pd.notna(last["pr_ratio"]):
         st.caption(f"Price-to-rent (last year): {last['pr_ratio']:.2f}")
 
-    st.subheader("Pass-through by year")
-    st.line_chart(out.set_index("year")[["pass_through"]], height=220)
-
-    st.subheader("Levels (price and rent)")
-    level_df = out[["year", "price", "rent"]].set_index("year")
-    st.line_chart(level_df, height=240)
-
     st.subheader("Explainer: pass-through mechanics")
     st.info(
         """
@@ -405,7 +398,16 @@ This means tax increases have a larger rent impact in tight, inelastic markets.
     )
 
     st.subheader("Underlying series")
-    st.dataframe(out[["year", "price", "rent", "price_delta_pct", "rent_delta_pct", "pass_through", "user_cost", "pr_ratio"]])
+    display_df = out[["year", "price", "rent", "price_delta_pct", "rent_delta_pct", "pass_through", "user_cost", "pr_ratio"]].copy()
+    display_df["year"] = display_df["year"].astype(int).astype(str)
+    display_df["rent"] = display_df["rent"].map(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
+    display_df["price"] = display_df["price"].map(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
+    display_df["price_delta_pct"] = display_df["price_delta_pct"].map(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
+    display_df["rent_delta_pct"] = display_df["rent_delta_pct"].map(lambda x: f"{x:.2f}%" if pd.notna(x) else "")
+    display_df["pass_through"] = display_df["pass_through"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+    display_df["user_cost"] = display_df["user_cost"].map(lambda x: f"{x:.3f}" if pd.notna(x) else "")
+    display_df["pr_ratio"] = display_df["pr_ratio"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+    st.dataframe(display_df)
 
 
 if __name__ == "__main__":
